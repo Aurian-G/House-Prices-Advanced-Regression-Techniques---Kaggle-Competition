@@ -1,0 +1,257 @@
+/**********************************/
+/*****End Term Kaggle Project******/
+/**********************************/
+
+PROC IMPORT OUT = WORK.train
+DATAFILE = "/folders/myfolders/home_price/train.csv"
+DBMS = CSV REPLACE;
+DATAROW = 2;
+RUN;
+
+/*proc print data = train;
+run;*/
+
+data trainfiltered;
+SET train;
+IF (Neighborhood = 'NAmes') OR (Neighborhood = 'Edwards') OR (Neighborhood = 'BrkSide');
+RUN;
+
+/*proc print data = trainfiltered;
+run;*/
+
+PROC IMPORT OUT = WORK.test
+DATAFILE = "/folders/myfolders/home_price/test.csv"
+DBMS = CSV REPLACE;
+DATAROW = 2;
+RUN;
+
+/*proc print data = test;
+run;*/
+
+data testfiltered;
+SET test;
+IF (Neighborhood = 'NAmes') OR (Neighborhood = 'Edwards') OR (Neighborhood = 'BrkSide');
+RUN;
+
+/*proc print data = testfiltered;
+run;*/
+
+/*proc GLM to check assumptions*/
+proc glm data = trainfiltered plots = all;
+model SalePrice = GrLivArea;
+run;
+
+/*Extreme values found in leverage graph and cook's D. Filtering those 2 values to check result again. We can restrict the range of living area and put it in write up*/
+
+data trainfiltered_noOutlier;
+SET trainfiltered;
+IF  (GrLivArea < 4000);
+RUN;
+
+proc glm data = trainfiltered_noOutlier plots = all;
+model SalePrice = GrLivArea;
+run;
+
+
+/*just applying log-log transformation to check because observations are not very well distributed*/
+
+data trainfilteredlog;
+set trainfiltered;
+lGrLivArea=log(GrLivArea);
+lSalePrice=log(SalePrice);
+run;
+
+
+proc glm data = trainfilteredlog plots = all;
+model lSalePrice = lGrLivArea;
+run;
+/*just applying log-log transformation (after extreme value removal) to check*/
+
+data trainfiltered_outlierlog;
+set trainfiltered_noOutlier;
+lGrLivArea=log(GrLivArea);
+lSalePrice=log(SalePrice);
+run;
+
+proc glm data = trainfiltered_outlierlog plots = all;
+model lSalePrice = lGrLivArea;
+run;
+
+/*Adding interaction variable using Neighborhood */
+
+proc glm data = trainfiltered_outlierlog plots = all;
+class Neighborhood (REF = "NAmes");
+model lSalePrice = Neighborhood | lGrLivArea;
+run;
+/*Now merging train and  test data set*/
+data test;
+set test;
+SalePrice = .;
+run;
+
+data traintest;
+set train test;
+run;
+/*Merging complete*/
+
+
+/*keeping data only for 3 neighborhoods we are interested in*/
+data traintestfiltered;
+set traintest;
+IF (Neighborhood = 'NAmes') OR (Neighborhood = 'Edwards') OR (Neighborhood = 'BrkSide');
+IF  (GrLivArea < 4000);
+RUN;
+
+proc glm data = traintestfiltered plots = all;
+model SalePrice = GrLivArea / cli;
+run;
+
+
+
+data traintestfilteredlog;
+set traintestfiltered;
+lGrLivArea=log(GrLivArea);
+lSalePrice=log(SalePrice);
+run;
+
+
+proc glm data = traintestfilteredlog plots = all;
+class Neighborhood (REF = "NAmes");
+model lSalePrice = Neighborhood | lGrLivArea / clm;
+run;
+
+proc glm data = traintestfilteredlog plots = all;
+class Neighborhood (REF = "NAmes");
+model lSalePrice = Neighborhood | lGrLivArea / cli;
+run;
+
+/*********************/
+/*****Question 2******/
+/*********************/
+
+
+DATA traintest_log;
+set traintest;
+array change _character_;
+	do over change;
+	if change='NA' then change='0';
+	end;
+RUN;
+
+
+DATA traintest_log;
+set traintest_log;
+lSalePrice=log(SalePrice);
+lGrLivArea=log(GrLivArea);
+RUN;
+
+
+DATA traintest_log(DROP = SalePrice GrLivArea); 
+SET traintest_log;
+RUN;
+
+
+proc glmselect data=traintest_log;
+class MSSubClass MSZoning LotFrontage Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 Heating HeatingQC CentralAir Electrical Functional KitchenQual FireplaceQu GarageQual GarageCond GarageType GarageFinish PavedDrive EnclosedPorch ScreenPorch PoolQC Fence MiscFeature SaleType SaleCondition;
+model lSalePrice = MSSubClass MSZoning LotFrontage LotArea Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle OverallQual OverallCond YearBuilt YearRemodAdd RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 BsmtFinSF2 BsmtUnfSF TotalBsmtSF Heating HeatingQC CentralAir Electrical LowQualFinSF BsmtFullBath BsmtHalfBath FullBath HalfBath BedroomAbvGr KitchenAbvGr KitchenQual TotRmsAbvGrd Functional Fireplaces FireplaceQu GarageType GarageYrBlt GarageFinish GarageCars GarageArea GarageQual GarageCond PavedDrive WoodDeckSF OpenPorchSF EnclosedPorch ScreenPorch PoolArea PoolQC Fence MiscFeature MiscVal MoSold YrSold SaleType SaleCondition lGrLivArea
+/ selection=Forward(stop=cv) cvmethod=random(5) stats=adjrsq;
+output out = PredictForward;
+run;
+
+DATA PredictForward;
+Set PredictForward;
+	If p_lSalePrice= '' Then
+   p_lSalePrice = 12.0236998;
+  else p_lSalePrice=p_lSalePrice;
+  keep Id p_lSalePrice;
+run;
+
+data PredictForward;
+set PredictForward;
+SalePrice=exp(p_lSalePrice);
+run;
+
+DATA PredictForward(KEEP = id SalePrice); 
+SET PredictForward;
+RUN;
+
+DATA PredictForward; 
+SET PredictForward;
+If (id <= 1460)
+	then delete;
+RUN;
+
+proc export data=PredictForward
+outfile='house_priceforward.csv' 
+dbms=csv replace;
+run;
+
+proc glmselect data=traintest_log;
+class MSSubClass MSZoning LotFrontage Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 Heating HeatingQC CentralAir Electrical Functional KitchenQual FireplaceQu GarageQual GarageCond GarageType GarageFinish PavedDrive EnclosedPorch ScreenPorch PoolQC Fence MiscFeature SaleType SaleCondition;
+model lSalePrice = MSSubClass MSZoning LotFrontage LotArea Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle OverallQual OverallCond YearBuilt YearRemodAdd RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 BsmtFinSF2 BsmtUnfSF TotalBsmtSF Heating HeatingQC CentralAir Electrical LowQualFinSF BsmtFullBath BsmtHalfBath FullBath HalfBath BedroomAbvGr KitchenAbvGr KitchenQual TotRmsAbvGrd Functional Fireplaces FireplaceQu GarageType GarageYrBlt GarageFinish GarageCars GarageArea GarageQual GarageCond PavedDrive WoodDeckSF OpenPorchSF EnclosedPorch ScreenPorch PoolArea PoolQC Fence MiscFeature MiscVal MoSold YrSold SaleType SaleCondition lGrLivArea
+/ selection=Backward(stop=cv) cvmethod=random(5) stats=adjrsq;
+output out = PredictBackward;
+run;
+
+DATA PredictBackward;
+Set PredictBackward;
+	If p_lSalePrice= '' Then
+   p_lSalePrice = 12.0236998;
+  else p_lSalePrice=p_lSalePrice;
+  keep Id p_lSalePrice;
+run;
+
+data PredictBackward;
+set PredictBackward;
+SalePrice=exp(p_lSalePrice);
+run;
+
+DATA PredictBackward(KEEP = id SalePrice); 
+SET PredictBackward;
+RUN;
+
+DATA PredictBackward; 
+SET PredictBackward;
+If (id <= 1460)
+	then delete;
+RUN;
+
+proc export data=PredictBackward
+outfile='house_pricebackward.csv' 
+dbms=csv replace;
+run;
+
+proc glmselect data=traintest_log;
+class MSSubClass MSZoning LotFrontage Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 Heating HeatingQC CentralAir Electrical Functional KitchenQual FireplaceQu GarageQual GarageCond GarageType GarageFinish PavedDrive EnclosedPorch ScreenPorch PoolQC Fence MiscFeature SaleType SaleCondition;
+model lSalePrice = MSSubClass MSZoning LotFrontage LotArea Street Alley LotShape LandContour Utilities LotConfig LandSlope Neighborhood Condition1 Condition2 BldgType HouseStyle OverallQual OverallCond YearBuilt YearRemodAdd RoofStyle RoofMatl Exterior1st Exterior2nd MasVnrType MasVnrArea ExterQual ExterCond Foundation BsmtQual BsmtCond BsmtExposure BsmtFinType1 BsmtFinSF1 BsmtFinType2 BsmtFinSF2 BsmtUnfSF TotalBsmtSF Heating HeatingQC CentralAir Electrical LowQualFinSF BsmtFullBath BsmtHalfBath FullBath HalfBath BedroomAbvGr KitchenAbvGr KitchenQual TotRmsAbvGrd Functional Fireplaces FireplaceQu GarageType GarageYrBlt GarageFinish GarageCars GarageArea GarageQual GarageCond PavedDrive WoodDeckSF OpenPorchSF EnclosedPorch ScreenPorch PoolArea PoolQC Fence MiscFeature MiscVal MoSold YrSold SaleType SaleCondition lGrLivArea
+/ selection=Stepwise(stop=cv) cvmethod=random(5) stats=adjrsq;
+output out = PredictStep;
+run;
+
+DATA PredictStep;
+Set PredictStep;
+	If p_lSalePrice= '' Then
+   p_lSalePrice = 11.9949185;
+  else p_lSalePrice=p_lSalePrice;
+  keep Id p_lSalePrice;
+run;
+
+data PredictStep;
+set PredictStep;
+SalePrice=exp(p_lSalePrice);
+run;
+
+DATA PredictStep(KEEP = id SalePrice); 
+SET PredictStep;
+RUN;
+
+DATA PredictStep; 
+SET PredictStep;
+If (id <= 1460)
+	then delete;
+RUN;
+
+proc export data=PredictStep
+outfile="house_pricestep.csv"
+dbms=csv replace;
+run;
