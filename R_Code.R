@@ -328,10 +328,10 @@ full.model <- lm(LogSalePrice ~., data = train)
 step.model <- stepAIC(full.model, direction = "both", trace = FALSE)
 summary(step.model)
 
-####Backward Selection
+###Backward Selection
 step.model <- stepAIC(full.model, direction = "backward", trace = FALSE)
 summary(step.model)
 
-####Forward Selection
+###Forward Selection
 step.model <- stepAIC(full.model, direction = "forward", trace = FALSE)
 summary(step.model)
