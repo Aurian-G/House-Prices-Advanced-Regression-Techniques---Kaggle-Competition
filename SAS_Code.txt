@@ -41,7 +41,7 @@ proc glm data = trainfiltered plots = all;
 model SalePrice = GrLivArea;
 run;
 
-/*Extreme values found in leverage graph and cook's D. Filtering those 2 values to check result again. We can restrict the range of living area and put it in write up*/
+/*Extreme values found in leverage graph and cook's D. Filtering those 2 values to check result again. We can restrict the range of living area*/
 
 data trainfiltered_noOutlier;
 SET trainfiltered;
